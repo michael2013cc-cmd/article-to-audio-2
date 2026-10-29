@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "md2audio"
+version = "0.1.0"
+description = "把书面文档改成能听的章节化 MP3（edge-tts + ffmpeg + mutagen）"
+requires-python = ">=3.9"
+dependencies = [
+    "edge-tts>=6.1.9",
+    "mutagen>=1.47.0",
+]
+
+[project.scripts]
+md2audio = "md2audio.__main__:main"
+
+[tool.setuptools]
+packages = ["md2audio"]
