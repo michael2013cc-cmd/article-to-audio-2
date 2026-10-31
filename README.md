@@ -133,7 +133,7 @@ alimiter=limit=0.76:attack=3:release=150:level=disabled
 
 ---
 
-## 章节标签的两个坑
+## 章节标签的坑
 
 `tags.py`：
 
@@ -141,6 +141,30 @@ alimiter=limit=0.76:attack=3:release=150:level=disabled
 * 保存写 `v2_version=4`，没有 `v2_4=` 这个参数。
 * 无害但会困惑人的一点：存 v2.4 时 `TYER` 会被升级成 `TDRC`。
 * 顺序问题：先 `shutil.copyfile` 把成品音频放到目标路径，**再**打标签。对着不存在的路径保存标签，会生成一个只有标签的几百字节文件，看起来像成功。
+* **`CTOC` 没有 `is_top=` 和 `child=` 这两个参数。** 子项在 `child_element_ids`，顶层标志在 `flags` 字节的 `0x02`（`CTOCFlags.TOP_LEVEL`）。传错参数名不会报错，mutagen 会当成无关 kwarg 丢掉 —— 结果是目录帧写出来子项是空的、`flags=0`，**章节导航表里什么都没有**。只有直接扫 CHAP 帧的播放器还看得到章节。
+* 因此 `verify.py` 除了数 CHAP 帧，还要核对目录帧的子项确实覆盖了每一个 CHAP。`tags.read_toc()` 读回来，`check` 会报 `table of contents does not list every chapter`。
+
+---
+
+## Windows
+
+**Windows 是支持的，但有两个坑，本仓库已经处理掉。**
+
+**编码。** Windows 的控制台默认用传统代码页（繁中机器上是 cp950），而 Python 在输出被重定向时用的是 ANSI 代码页而不是控制台的 UTF-8。于是两处会崩：
+
+* `print()` 一个代码页装不下的章节标题 → `UnicodeEncodeError`，直接中断；
+* `subprocess.run(..., text=True)` 解码 ffmpeg 的输出 → `UnicodeDecodeError`，`stderr` 变成 `None`，`verify._summary(None)` 再抛一个 `AttributeError`。
+
+修法在 `md2audio/__init__.py`（导入时就把 stdout/stderr 改成 UTF-8）和 `audio.py` / `verify.py`（`subprocess.run(..., encoding="utf-8", errors="replace")`）。**你不需要设 `PYTHONUTF8=1`**。
+
+**运行方式。** 本仓库不是安装包，用 `PYTHONPATH` 指向仓库根目录即可：
+
+```powershell
+$env:PYTHONPATH = "C:\path\to\article-to-audio-2"
+python -m md2audio make examples\sample.txt -o out\sample.mp3
+```
+
+或者 `pip install -e .` 之后直接用 `md2audio` 命令。
 
 ---
 
@@ -157,7 +181,7 @@ alimiter=limit=0.76:attack=3:release=150:level=disabled
 | `audit.py` | 数字与杂字符的机械审计 |
 | `pipeline.py` | 串起五个阶段，可 `--resume` |
 
-测试不联网、不需要 ffmpeg：`python -m unittest discover -s tests`（20 项）。
+测试不联网、不需要 ffmpeg：`python -m unittest discover -s tests`（28 项）。
 
 ---
 

@@ -17,8 +17,11 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-# 二零二六年, 二零一七年 ... spelled-out years, the usual form in a spoken script
-CN_YEAR = re.compile(r"[零一二三四五六七八九十百]{3,5}年")
+# 二零二六年, 二〇一五年 ... spelled-out years, the usual form in a spoken script.
+# 〇 (U+3007, the ideographic zero) belongs in this class: it is a standard way
+# to write a year, and leaving it out made "二〇一五年" invisible to the whole
+# audit - a wrong year written that way slipped through unmatched_numbers.
+CN_YEAR = re.compile(r"[零〇一二三四五六七八九十百]{3,5}年")
 # 2026年, 1.5倍, 43.8%, 20/320
 DIGITS = re.compile(r"\d+(?:\.\d+)?(?:%|倍|家|亿|万)?")
 # any run containing Latin or Cyrillic letters
@@ -87,7 +90,7 @@ def non_cjk_characters(text: str) -> set[str]:
 
 
 CN_DIGITS = {
-    "零": "0", "一": "1", "二": "2", "三": "3", "四": "4",
+    "零": "0", "〇": "0", "一": "1", "二": "2", "三": "3", "四": "4",
     "五": "5", "六": "6", "七": "7", "八": "8", "九": "9",
 }
 

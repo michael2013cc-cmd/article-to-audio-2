@@ -17,6 +17,17 @@ from __future__ import annotations
 
 from mutagen.id3 import CHAP, CTOC, TALB, TCON, TIT2, TPE1, TRCK, TYER, ID3
 
+# CTOCFlags.TOP_LEVEL - the bit that marks the root of the chapter table.
+#
+# mutagen's CTOC frame has no `is_top` and no `child` keyword: the children
+# live in `child_element_ids` and the top-level bit lives in the `flags`
+# byte. An earlier version of this file passed `is_top=True` and `child=ids`,
+# which mutagen accepted as stray keyword arguments and silently discarded -
+# so every CTOC was written with an EMPTY child list and flags=0. The chapter
+# table of contents listed nothing at all, and only players that scan CHAP
+# frames directly ever showed the chapters.
+CTOC_TOP_LEVEL = 0x02
+
 
 def _text_frame(cls, value: str):
     return cls(encoding=3, text=value)
@@ -52,8 +63,7 @@ def write_chapters(
     ids = []
     for i, ch in enumerate(anchors):
         cid = f"C{i:02d}"
-        kid = f"K{i:02d}"
-        ids.append(kid)
+        ids.append(cid)
         start_ms = int(round(ch["start"] * 1000))
         end_ms = int(round((ch["start"] + ch["sec"]) * 1000))
         tags.add(CHAP(
@@ -64,9 +74,19 @@ def write_chapters(
             end_offset=None,
             sub_frames={},
         ))
-        tags.add(CTOC(element_id=kid, is_top=False, child=[], indent=1))
 
-    tags.add(CTOC(element_id="TOC", is_top=True, child=ids, indent=0))
+    # The table of contents must point at the CHAP frames themselves.
+    # Per ID3v2.4 a CTOC's child list may contain CHAP element ids directly.
+    # An earlier version built one empty CTOC per chapter and listed *those*
+    # as the TOC's children, which left every CHAP frame unreferenced - the
+    # hierarchy was a dead end, and `read_chapters` (which only counts CHAP
+    # frames) could not see it.
+    tags.add(CTOC(
+        element_id="TOC",
+        flags=CTOC_TOP_LEVEL,
+        child_element_ids=ids,
+        sub_frames=[],
+    ))
     tags.save(path, v2_version=4)
 
 
@@ -78,3 +98,20 @@ def read_chapters(path: str) -> list[tuple[str, int, int]]:
         frame = tags[key]
         out.append((key.split(":", 1)[1], frame.start_time, frame.end_time))
     return out
+
+
+def read_toc(path: str) -> tuple[str, list[str]]:
+    """Read the top-level table of contents: (element_id, child element ids).
+
+    Returns an empty tuple when the file has no top-level CTOC.
+    """
+    tags = ID3(path)
+    fallback = ("", [])
+    for key in sorted(k for k in tags.keys() if k.startswith("CTOC:")):
+        frame = tags[key]
+        children = list(getattr(frame, "child_element_ids", None) or [])
+        if int(getattr(frame, "flags", 0) or 0) & CTOC_TOP_LEVEL:
+            return key.split(":", 1)[1], children
+        if len(children) > len(fallback[1]):
+            fallback = (key.split(":", 1)[1], children)
+    return fallback

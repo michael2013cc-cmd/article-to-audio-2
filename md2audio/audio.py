@@ -32,7 +32,12 @@ BITRATE = "64k"  # transparent enough for speech, keeps an hour-long file small
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # encoding must be explicit: without it Python decodes ffmpeg's output
+    # with the locale code page, and a cp950 console cannot decode ffmpeg's
+    # UTF-8 bytes -> UnicodeDecodeError -> stderr becomes None.
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {' '.join(cmd)}\n{proc.stderr[-1500:]}")
     return proc

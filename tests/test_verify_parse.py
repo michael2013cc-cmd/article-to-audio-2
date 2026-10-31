@@ -48,6 +48,13 @@ class SummaryParseTest(unittest.TestCase):
     def test_missing_summary_falls_back_to_whole_text(self):
         self.assertEqual(_summary("no summary here"), "no summary here")
 
+    def test_empty_output_does_not_crash_the_parser(self):
+        # On a Windows console the ffmpeg output used to fail to decode, which
+        # made subprocess return stderr=None and crashed _summary(None) with
+        # an AttributeError instead of a readable report.
+        self.assertEqual(_summary(""), "")
+        self.assertEqual(_summary(None), "")
+
 
 if __name__ == "__main__":
     unittest.main()

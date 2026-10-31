@@ -66,6 +66,20 @@ class AuditTest(unittest.TestCase):
             self.assertEqual(report["latin_runs"], {})
             self.assertEqual(report["non_cjk_characters"], [])
 
+    def test_ideographic_zero_year_is_recognised(self):
+        # 〇 (U+3007) is a standard way to write a year. It used to be missing
+        # from the character class, which made "二〇一五年" invisible to the
+        # audit - so a wrong year written that way slipped through completely.
+        self.assertIn("二〇一五年", audit.spelled_years("项目于二〇一五年启动。"))
+        self.assertEqual(audit.cn_year_to_digits("二〇一五年"), "2015")
+
+    def test_wrong_year_with_ideographic_zero_is_surfaced(self):
+        script_text = "这项研究发表于二〇二五年，样本量十六人。"
+        source_text = "样本量 16 人，发表于 2015 年。"
+        diff = audit.diff_against_source(script_text, source_text)
+        self.assertEqual(diff["unmatched_numbers"], ["2025"])
+        self.assertIn("2015", diff["source_only_numbers"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,12 +21,17 @@ MAX_FLAT_FACTOR = 0.0
 
 
 def _ff(args: list[str]) -> str:
+    # encoding must be explicit - see audio._run. Without it the locale code
+    # page decodes ffmpeg's UTF-8 output and the process dies inside the
+    # reader thread, which surfaces as `stderr is None` further down.
     proc = subprocess.run(
         ["ffmpeg", "-hide_banner", "-nostats", *args, "-f", "null", "-"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
-    return proc.stderr
+    return proc.stderr or ""
 
 
 def _grab(text: str, label: str) -> float | None:
@@ -41,6 +46,8 @@ def _summary(text: str) -> str:
     read ``I: -70.0`` until there is enough audio to gate. Parsing the whole
     stderr therefore reports -70 LUFS for a perfectly normal file.
     """
+    if not text:
+        return ""
     idx = text.rfind("Summary:")
     return text[idx:] if idx != -1 else text
 
@@ -64,13 +71,15 @@ def decodes(path: str) -> bool:
         ["ffmpeg", "-hide_banner", "-v", "error", "-i", path, "-f", "null", "-"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
-    return proc.returncode == 0 and not proc.stderr.strip()
+    return proc.returncode == 0 and not (proc.stderr or "").strip()
 
 
 def check_file(path: str, expect_chapters: int | None = None) -> dict:
     """Return a measurement report plus a pass/fail verdict with reasons."""
-    from .tags import read_chapters
+    from .tags import read_chapters, read_toc
 
     report: dict = {"file": path}
     problems: list[str] = []
@@ -99,6 +108,19 @@ def check_file(path: str, expect_chapters: int | None = None) -> dict:
         problems.append(
             f"{len(chapters)} chapter frames, expected {expect_chapters}"
         )
+
+    # The chapter table of contents has to actually point at the CHAP frames.
+    # Counting CHAP frames alone cannot see a broken hierarchy.
+    toc_id, toc_children = read_toc(path)
+    report["toc_children"] = len(toc_children)
+    chap_ids = {cid for cid, _, _ in chapters}
+    if chap_ids:
+        if not toc_children:
+            problems.append("no top-level table of contents")
+        elif not set(toc_children) <= chap_ids:
+            problems.append("table of contents references unknown element ids")
+        elif set(toc_children) != chap_ids:
+            problems.append("table of contents does not list every chapter")
 
     report["ok"] = not problems
     report["problems"] = problems

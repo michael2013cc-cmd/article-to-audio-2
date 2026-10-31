@@ -62,6 +62,8 @@ def _cmd_audit(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # md2audio/__init__.py already forced UTF-8 on stdout/stderr, because a
+    # cp950 console cannot encode a chapter title and would kill the run.
     parser = argparse.ArgumentParser(
         prog="md2audio",
         description="listening script -> chaptered mp3",
